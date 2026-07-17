@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
+export PYBUILD_NAME=hifiberry-auth
+# tests need flask/argon2 which aren't in the minimal build chroot; run via pytest in dev
+export PYBUILD_DISABLE=test
 
 %:
-	dh $@
-
-override_dh_auto_test:
-	# tests run in CI/dev via pytest; skip in the build chroot
+	dh $@ --buildsystem=pybuild
