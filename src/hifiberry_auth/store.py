@@ -7,7 +7,7 @@ import sqlite3
 import threading
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
+from argon2.exceptions import Argon2Error
 
 PROTECTION_VALUES = ("unset", "off", "risky", "all")
 
@@ -56,7 +56,7 @@ class AuthStore:
         try:
             self._hasher.verify(stored, password)
             return True
-        except (VerifyMismatchError, VerificationError, InvalidHashError):
+        except Argon2Error:
             return False
 
     # -- signing key -----------------------------------------------------
