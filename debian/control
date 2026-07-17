@@ -1,0 +1,16 @@
+Source: hifiberry-auth
+Section: net
+Priority: optional
+Maintainer: HiFiBerry <support@hifiberry.com>
+Build-Depends: debhelper-compat (= 13), dh-sequence-python3, python3-all, python3-setuptools
+Standards-Version: 4.6.2
+Homepage: https://www.hifiberry.com/
+
+Package: hifiberry-auth
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}, python3-flask, python3-waitress, python3-argon2, adduser
+Description: HiFiBerry OS authentication/authorization gateway
+ A small localhost service that enforces authentication for the HiFiBerry OS
+ web APIs. It classifies each endpoint (ok vs risky) from per-package drop-in
+ manifests and answers nginx's auth_request: normal music use stays password
+ free, while risky operations require a device password.

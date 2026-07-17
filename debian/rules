@@ -1,0 +1,7 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_test:
+	# tests run in CI/dev via pytest; skip in the build chroot

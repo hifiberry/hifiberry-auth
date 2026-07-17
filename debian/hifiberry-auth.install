@@ -1,0 +1,2 @@
+nginx/00-verify.conf etc/nginx/hifiberry-auth.d/
+nginx/hifiberry-auth.nginx etc/nginx/hifiberry-api.d/

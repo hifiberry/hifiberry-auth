@@ -1,0 +1,23 @@
+[Unit]
+Description=HiFiBerry authentication/authorization gateway
+Documentation=file:///usr/share/doc/hifiberry-auth
+After=network.target
+Before=nginx.service
+
+[Service]
+Type=simple
+User=_hifiauth
+Group=_hifiauth
+ExecStart=/usr/bin/hifiberry-auth --host 127.0.0.1 --port 1089
+Restart=always
+RestartSec=3
+# This service handles the device password + sessions; keep it tightly confined.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/hifiberry-auth
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

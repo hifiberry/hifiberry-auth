@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+case "$1" in
+  configure)
+    if ! getent passwd _hifiauth >/dev/null; then
+      adduser --system --group --no-create-home --home /var/lib/hifiberry-auth _hifiauth
+    fi
+    mkdir -p /var/lib/hifiberry-auth
+    chown _hifiauth:_hifiauth /var/lib/hifiberry-auth
+    chmod 0750 /var/lib/hifiberry-auth
+    mkdir -p /etc/hifiberry/auth.d
+    # nginx picks up the new snippets on reload; do it if nginx is running
+    if [ -d /run/systemd/system ] && systemctl is-active --quiet nginx 2>/dev/null; then
+      systemctl reload nginx || true
+    fi
+    ;;
+esac
+#DEBHELPER#
+exit 0
