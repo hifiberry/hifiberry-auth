@@ -14,6 +14,19 @@ case "$1" in
       systemctl reload nginx || true
     fi
     ;;
+
+  triggered)
+    # A package added, changed or removed a classification manifest in
+    # /etc/hifiberry/auth.d. Manifests are read at startup only, so without
+    # this the gateway keeps its old view of the world. On a fresh install
+    # that is fatal: hifiberry-auth is pulled in as a dependency and starts
+    # before configurator and audiocontrol ship their manifests, so every
+    # endpoint falls through to the risky default and the whole web UI 401s.
+    # try-restart is a no-op while the service is not running yet.
+    if [ -d /run/systemd/system ]; then
+      systemctl try-restart hifiberry-auth.service || true
+    fi
+    ;;
 esac
 #DEBHELPER#
 exit 0
