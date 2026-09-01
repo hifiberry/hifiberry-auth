@@ -219,11 +219,72 @@ def test_logout_with_a_wrong_csrf_is_refused(tmp_path):
     assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 200
 
 
-def test_logout_without_a_session_is_refused_but_still_clears_the_cookie(tmp_path):
+def test_logout_without_a_session_is_refused_and_leaves_the_cookie_alone(tmp_path):
     client, _ = _client(tmp_path, protection="risky", with_password=True)
     r = client.post("/api/auth/logout")
     assert r.status_code == 401
-    assert _cleared_cookie(r)
+    assert not _cleared_cookie(r)
+
+
+def test_a_refused_logout_leaves_the_cookie_intact_for_a_retry(tmp_path):
+    """A refused sign-out used to delete the cookie anyway, which destroyed
+    what a client needs to fetch a fresh CSRF token and try again -- so the
+    browser ended up signed out while the session row survived."""
+    client, store = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, _ = _login(client)
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+
+    r = client.post("/api/auth/logout", headers={"X-CSRF-Token": "stale"})
+    assert r.status_code == 401
+    assert not _cleared_cookie(r)
+    # The other half of the fix: a refusal revokes nothing either.
+    with store._conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+    # The cookie still authenticates, so the client can rehydrate and retry.
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    body = client.get("/api/auth/csrf").get_json()
+    assert body and body.get("csrf")
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.post("/api/auth/logout",
+                       headers={"X-CSRF-Token": body["csrf"]}).status_code == 200
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 401
+
+
+def test_policy_requires_a_csrf_token(tmp_path):
+    client, store = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, csrf = _login(client)
+
+    # protection="off" disables password protection for the whole device, so
+    # it should be no easier to reach than signing out.
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.post("/api/auth/policy", json={"protection": "off"}).status_code == 401
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.post("/api/auth/policy", json={"protection": "off"},
+                       headers={"X-CSRF-Token": "nope"}).status_code == 401
+    assert store.get_protection() == "risky"
+
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.post("/api/auth/policy", json={"protection": "off"},
+                       headers={"X-CSRF-Token": csrf}).status_code == 200
+    assert store.get_protection() == "off"
+
+
+def test_a_non_ascii_csrf_token_is_refused_rather_than_crashing(tmp_path):
+    """hmac.compare_digest() rejects non-ASCII str arguments, and WSGI decodes
+    header values as latin-1, so a high byte used to raise TypeError and
+    surface as a 500 instead of a 401."""
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, _ = _login(client)
+    bad = "caf\u00e9-token"
+
+    assert _verify(client, "POST", "/api/config/v1/system/reboot",
+                   cookie=cookie, csrf=bad).status_code == 401
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.post("/api/auth/logout", headers={"X-CSRF-Token": bad}).status_code == 401
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.post("/api/auth/policy", json={"protection": "off"},
+                       headers={"X-CSRF-Token": bad}).status_code == 401
 
 
 def test_logout_leaves_other_sessions_alone(tmp_path):

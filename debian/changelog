@@ -1,3 +1,18 @@
+hifiberry-auth (0.2.1) stable; urgency=medium
+
+  * Signing out no longer clears the session cookie when it refuses the
+    request. It used to clear it on both branches while deleting the session
+    only on success, so a client whose CSRF token had gone stale lost the
+    cookie to the 401 and could not retry: the browser ended up signed out
+    while the session stayed valid on the device.
+  * Setting the protection policy now requires a CSRF token, like every other
+    write. protection=off unprotects the whole device, so it was the one
+    damaging write a session cookie alone could perform.
+  * A CSRF token containing non-ASCII characters is refused with a 401 instead
+    of raising and returning a 500.
+
+ -- HiFiBerry <support@hifiberry.com>  Tue, 01 Sep 2026 18:55:59 +0000
+
 hifiberry-auth (0.2.0) stable; urgency=medium
 
   * Sign-out now ends the session. POST /api/auth/logout previously cleared
