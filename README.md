@@ -106,7 +106,7 @@ python3 -m pytest tests/
 
 | Path | Purpose |
 |---|---|
-| `/var/lib/hifiberry-auth/auth.db` | password hash, signing key, policy |
+| `/var/lib/hifiberry-auth/auth.db` | password hash, signing key, policy, session allowlist |
 | `/etc/hifiberry/auth.d/*.json` | per-service classification manifests |
 | `/etc/nginx/hifiberry-auth.d/00-verify.conf` | server-level `auth_request` wiring |
 
