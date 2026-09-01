@@ -139,8 +139,18 @@ def create_app(store, tier_map, clock=time.time):
 
     @app.route("/api/auth/logout", methods=["POST"])
     def logout():
-        resp = make_response(jsonify({"status": "success"}))
-        resp.set_cookie(COOKIE_NAME, "", max_age=0, httponly=True, samesite="Lax", path="/")
+        session = _current_session()
+        csrf_header = request.headers.get(CSRF_HEADER)
+        ok = bool(session is not None and csrf_header
+                  and hmac.compare_digest(csrf_header, session["csrf"]))
+        if ok:
+            store.remove_session(session["sid"])
+        resp = make_response(
+            jsonify({"status": "success"} if ok else
+                    {"status": "error", "message": "authentication required"}),
+            200 if ok else 401)
+        resp.set_cookie(COOKIE_NAME, "", max_age=0, httponly=True,
+                        samesite="Lax", path="/")
         return resp
 
     @app.route("/api/auth/policy", methods=["POST"])

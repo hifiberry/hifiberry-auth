@@ -157,14 +157,6 @@ def test_policy_requires_session(tmp_path):
     assert store.get_protection() == "all"
 
 
-def test_logout_clears_the_cookie(tmp_path):
-    client, _ = _client(tmp_path, protection="risky", with_password=True)
-    r = client.post("/api/auth/logout")
-    assert r.status_code == 200
-    # a cleared cookie (empty / expired) is set
-    assert any(h.startswith(COOKIE + "=") for h in r.headers.getlist("Set-Cookie"))
-
-
 def test_a_deleted_row_invalidates_the_cookie(tmp_path):
     client, store = _client(tmp_path, protection="risky", with_password=True)
     _, cookie, _ = _login(client)
@@ -183,3 +175,64 @@ def test_login_records_a_session_row(tmp_path):
     _login(client)
     with store._conn() as c:
         assert c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+
+def _cleared_cookie(response):
+    """Flask emits `hifiberry_session=; Expires=...; Max-Age=0; HttpOnly; ...`
+    when the cookie is cleared — verified against the installed Flask."""
+    return any(h.startswith(COOKIE + "=") and "Max-Age=0" in h
+               for h in response.headers.getlist("Set-Cookie"))
+
+
+def test_logout_revokes_the_session_it_was_called_with(tmp_path):
+    """The bug this change exists to fix: a copy of the cookie kept working
+    after a proper sign-out, for the rest of its thirty-day life."""
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, csrf = _login(client)
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+
+    r = client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 200
+    assert _cleared_cookie(r)
+
+    # replay the cookie we kept
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 401
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.get("/api/auth/csrf").status_code == 401
+
+
+def test_logout_without_csrf_is_refused_and_leaves_the_session_working(tmp_path):
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, _ = _login(client)
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+
+    assert client.post("/api/auth/logout").status_code == 401
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 200
+
+
+def test_logout_with_a_wrong_csrf_is_refused(tmp_path):
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, _ = _login(client)
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+
+    assert client.post("/api/auth/logout", headers={"X-CSRF-Token": "nope"}).status_code == 401
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 200
+
+
+def test_logout_without_a_session_is_refused_but_still_clears_the_cookie(tmp_path):
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    r = client.post("/api/auth/logout")
+    assert r.status_code == 401
+    assert _cleared_cookie(r)
+
+
+def test_logout_leaves_other_sessions_alone(tmp_path):
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie_a, csrf_a = _login(client)
+    _, cookie_b, _ = _login(client)
+
+    client.set_cookie(COOKIE, cookie_a, domain="localhost")
+    assert client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf_a}).status_code == 200
+
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie_a).status_code == 401
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie_b).status_code == 200
