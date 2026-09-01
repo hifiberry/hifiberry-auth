@@ -69,9 +69,11 @@ device signs in once after that upgrade.
 
 Risky **non-GET** requests must additionally carry the session's CSRF token in
 `X-CSRF-Token`. The writes under `/api/auth/` are exempt from `auth_request`,
-so they check it themselves: `logout` and `policy` both require it, and a
-refused request is a 401 that changes nothing — including the cookie, which is
-cleared only when a sign-out actually succeeds.
+so the ones that need a token check it themselves: `logout` and `policy` both
+require it, and a refused request is a 401 that changes nothing — including the
+cookie, which is cleared only when a sign-out actually succeeds. `login` cannot
+require one, since it mints the session that would carry it, and `set-password`
+takes the current password instead, which proves more than a token would.
 
 No `Secure` flag is set on the cookie: HiFiBerryOS is served over plain HTTP on
 the local network. The model protects against unauthenticated API use, not

@@ -237,6 +237,9 @@ def test_a_refused_logout_leaves_the_cookie_intact_for_a_retry(tmp_path):
     r = client.post("/api/auth/logout", headers={"X-CSRF-Token": "stale"})
     assert r.status_code == 401
     assert not _cleared_cookie(r)
+    # The other half of the fix: a refusal revokes nothing either.
+    with store._conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
 
     # The cookie still authenticates, so the client can rehydrate and retry.
     client.set_cookie(COOKIE, cookie, domain="localhost")

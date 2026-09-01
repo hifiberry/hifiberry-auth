@@ -48,14 +48,18 @@ class RateLimiter:
 def _csrf_matches(session, csrf_header) -> bool:
     """Constant-time compare of the header against the session's own token.
 
-    Compares the encoded bytes rather than the strings: compare_digest()
-    refuses str arguments that are not ASCII-only, and WSGI hands header
-    values over latin-1-decoded, so a byte above 0x7F would raise TypeError
-    and surface as a 500 where a 401 is meant.
+    A non-ASCII header is refused outright. The token is always
+    secrets.token_urlsafe() output, so nothing else can match it anyway, and
+    compare_digest() refuses str arguments that are not ASCII-only -- WSGI
+    hands header values over latin-1-decoded, so a byte above 0x7F would
+    otherwise raise TypeError and surface as a 500 where a 401 is meant.
+
+    isascii() is not constant time, but it branches on the caller's own
+    input and never on the token.
     """
-    if not csrf_header:
+    if not csrf_header or not csrf_header.isascii():
         return False
-    return hmac.compare_digest(csrf_header.encode(), session["csrf"].encode())
+    return hmac.compare_digest(csrf_header, session["csrf"])
 
 
 def decide(method, tier, protection, session, csrf_header):
