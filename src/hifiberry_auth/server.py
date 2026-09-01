@@ -69,7 +69,10 @@ def create_app(store, tier_map, clock=time.time):
     limiter = RateLimiter(clock=clock)
 
     def _current_session():
-        return sessions.verify(request.cookies.get(COOKIE_NAME))
+        payload = sessions.verify(request.cookies.get(COOKIE_NAME))
+        if payload is None or not store.session_is_active(payload["sid"]):
+            return None
+        return payload
 
     def _set_cookie(resp, cookie_value, max_age):
         resp.set_cookie(COOKIE_NAME, cookie_value, max_age=max_age, httponly=True,
@@ -77,9 +80,10 @@ def create_app(store, tier_map, clock=time.time):
         return resp
 
     def _authed_response(remember=False):
-        cookie, csrf = sessions.mint(remember=remember)
+        cookie, session = sessions.mint(remember=remember)
+        store.add_session(session["sid"], session["exp"])
         max_age = sessions.remember_ttl if remember else sessions.ttl
-        resp = make_response(jsonify({"status": "success", "csrf": csrf}))
+        resp = make_response(jsonify({"status": "success", "csrf": session["csrf"]}))
         return _set_cookie(resp, cookie, max_age)
 
     # -- nginx auth_request ---------------------------------------------

@@ -163,3 +163,23 @@ def test_logout_clears_the_cookie(tmp_path):
     assert r.status_code == 200
     # a cleared cookie (empty / expired) is set
     assert any(h.startswith(COOKIE + "=") for h in r.headers.getlist("Set-Cookie"))
+
+
+def test_a_deleted_row_invalidates_the_cookie(tmp_path):
+    client, store = _client(tmp_path, protection="risky", with_password=True)
+    _, cookie, _ = _login(client)
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 200
+
+    store.remove_all_sessions()
+
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie).status_code == 401
+    client.set_cookie(COOKIE, cookie, domain="localhost")
+    assert client.get("/api/auth/csrf").status_code == 401
+    assert client.get("/api/auth/status").get_json()["authenticated"] is False
+
+
+def test_login_records_a_session_row(tmp_path):
+    client, store = _client(tmp_path, protection="risky", with_password=True)
+    _login(client)
+    with store._conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
