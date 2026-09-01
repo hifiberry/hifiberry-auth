@@ -151,9 +151,7 @@ def create_app(store, tier_map, clock=time.time):
             jsonify({"status": "success"} if ok else
                     {"status": "error", "message": "authentication required"}),
             200 if ok else 401)
-        resp.set_cookie(COOKIE_NAME, "", max_age=0, httponly=True,
-                        samesite="Lax", path="/")
-        return resp
+        return _set_cookie(resp, "", 0)
 
     @app.route("/api/auth/policy", methods=["POST"])
     def policy():

@@ -1,8 +1,10 @@
-"""Stateless signed session cookies.
+"""Signed session cookies.
 
 A session is a compact JSON payload (version, issued-at, expiry, csrf token, session id)
-signed with HMAC-SHA256 over a per-device server key. No server-side store:
-verification is signature + expiry only, and rotating the key revokes everything.
+signed with HMAC-SHA256 over a per-device server key. Verification in this module is
+signature + expiry only, with no database lookup, which is what keeps it testable in
+isolation. The caller (server.py's `_current_session()`) additionally requires the
+session id to have a live allowlist row — that check is what makes a session revocable.
 """
 
 import base64
