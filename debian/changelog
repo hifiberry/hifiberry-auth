@@ -13,6 +13,7 @@ hifiberry-auth (0.2.0) stable; urgency=medium
     device signs in once after the upgrade.
 
  -- HiFiBerry <support@hifiberry.com>  Tue, 01 Sep 2026 16:38:26 +0000
+
 hifiberry-auth (0.1.3) stable; urgency=medium
 
   * Restart on manifest changes via a dpkg trigger on /etc/hifiberry/auth.d.
