@@ -68,7 +68,10 @@ Sessions issued before 0.2.0 carry no session id and are not accepted, so every
 device signs in once after that upgrade.
 
 Risky **non-GET** requests must additionally carry the session's CSRF token in
-`X-CSRF-Token`.
+`X-CSRF-Token`. The writes under `/api/auth/` are exempt from `auth_request`,
+so they check it themselves: `logout` and `policy` both require it, and a
+refused request is a 401 that changes nothing — including the cookie, which is
+cleared only when a sign-out actually succeeds.
 
 No `Secure` flag is set on the cookie: HiFiBerryOS is served over plain HTTP on
 the local network. The model protects against unauthenticated API use, not
@@ -84,7 +87,7 @@ against an attacker who can read or modify LAN traffic.
 | `/api/auth/set-password` | POST | set/change the password, mints a session |
 | `/api/auth/login` | POST | sign in (rate limited), mints a session |
 | `/api/auth/logout` | POST | end the session (needs a session and a CSRF token) and clear the cookie |
-| `/api/auth/policy` | POST | set the protection policy |
+| `/api/auth/policy` | POST | set the protection policy (needs a session and a CSRF token) |
 | `/api/auth/csrf` | GET | current session's CSRF token |
 
 `GET /_auth/verify` is the internal nginx subrequest target and is not

@@ -45,6 +45,19 @@ class RateLimiter:
         self._locked_until = 0.0
 
 
+def _csrf_matches(session, csrf_header) -> bool:
+    """Constant-time compare of the header against the session's own token.
+
+    Compares the encoded bytes rather than the strings: compare_digest()
+    refuses str arguments that are not ASCII-only, and WSGI hands header
+    values over latin-1-decoded, so a byte above 0x7F would raise TypeError
+    and surface as a 500 where a 401 is meant.
+    """
+    if not csrf_header:
+        return False
+    return hmac.compare_digest(csrf_header.encode(), session["csrf"].encode())
+
+
 def decide(method, tier, protection, session, csrf_header):
     """Return (hint, status). hint is None on allow, else 'set-password'|'login'."""
     method = (method or "").upper()
@@ -58,7 +71,7 @@ def decide(method, tier, protection, session, csrf_header):
     if session is None:
         return "login", 401
     if method not in SAFE_METHODS:
-        if not csrf_header or not hmac.compare_digest(csrf_header, session["csrf"]):
+        if not _csrf_matches(session, csrf_header):
             return "login", 401
     return None, 200
 
@@ -142,21 +155,20 @@ def create_app(store, tier_map, clock=time.time):
     @app.route("/api/auth/logout", methods=["POST"])
     def logout():
         session = _current_session()
-        csrf_header = request.headers.get(CSRF_HEADER)
-        ok = bool(session is not None and csrf_header
-                  and hmac.compare_digest(csrf_header, session["csrf"]))
-        if ok:
-            store.remove_session(session["sid"])
-        resp = make_response(
-            jsonify({"status": "success"} if ok else
-                    {"status": "error", "message": "authentication required"}),
-            200 if ok else 401)
-        return _set_cookie(resp, "", 0)
+        if session is None or not _csrf_matches(session, request.headers.get(CSRF_HEADER)):
+            # Leave the cookie in place. Clearing it on a refusal destroys what
+            # the caller needs to fetch a fresh CSRF token and try again, so the
+            # browser ends up signed out while the session row lives on.
+            return jsonify({"status": "error", "message": "authentication required"}), 401
+        store.remove_session(session["sid"])
+        return _set_cookie(make_response(jsonify({"status": "success"})), "", 0)
 
     @app.route("/api/auth/policy", methods=["POST"])
     def policy():
         session = _current_session()
-        if session is None:
+        # protection="off" unprotects the whole device, so this is the most
+        # damaging write on this surface -- it takes the same token as logout.
+        if session is None or not _csrf_matches(session, request.headers.get(CSRF_HEADER)):
             return jsonify({"status": "error", "message": "authentication required"}), 401
         body = request.get_json(silent=True) or {}
         value = body.get("protection")
