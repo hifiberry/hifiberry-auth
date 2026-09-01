@@ -69,7 +69,10 @@ def create_app(store, tier_map, clock=time.time):
     limiter = RateLimiter(clock=clock)
 
     def _current_session():
-        return sessions.verify(request.cookies.get(COOKIE_NAME))
+        payload = sessions.verify(request.cookies.get(COOKIE_NAME))
+        if payload is None or not store.session_is_active(payload["sid"]):
+            return None
+        return payload
 
     def _set_cookie(resp, cookie_value, max_age):
         resp.set_cookie(COOKIE_NAME, cookie_value, max_age=max_age, httponly=True,
@@ -77,9 +80,10 @@ def create_app(store, tier_map, clock=time.time):
         return resp
 
     def _authed_response(remember=False):
-        cookie, csrf = sessions.mint(remember=remember)
+        cookie, session = sessions.mint(remember=remember)
+        store.add_session(session["sid"], session["exp"])
         max_age = sessions.remember_ttl if remember else sessions.ttl
-        resp = make_response(jsonify({"status": "success", "csrf": csrf}))
+        resp = make_response(jsonify({"status": "success", "csrf": session["csrf"]}))
         return _set_cookie(resp, cookie, max_age)
 
     # -- nginx auth_request ---------------------------------------------
@@ -118,6 +122,7 @@ def create_app(store, tier_map, clock=time.time):
             if not store.verify_password(body.get("current", "")):
                 return jsonify({"status": "error", "message": "current password required"}), 401
         store.set_password(new)
+        store.remove_all_sessions()
         if store.get_protection() in ("unset", "off"):
             store.set_protection("risky")
         return _authed_response(remember=bool(body.get("remember")))
@@ -131,13 +136,22 @@ def create_app(store, tier_map, clock=time.time):
             limiter.record_fail()
             return jsonify({"status": "error", "message": "invalid password"}), 401
         limiter.record_success()
+        store.prune_sessions(int(clock()))
         return _authed_response(remember=bool(body.get("remember")))
 
     @app.route("/api/auth/logout", methods=["POST"])
     def logout():
-        resp = make_response(jsonify({"status": "success"}))
-        resp.set_cookie(COOKIE_NAME, "", max_age=0, httponly=True, samesite="Lax", path="/")
-        return resp
+        session = _current_session()
+        csrf_header = request.headers.get(CSRF_HEADER)
+        ok = bool(session is not None and csrf_header
+                  and hmac.compare_digest(csrf_header, session["csrf"]))
+        if ok:
+            store.remove_session(session["sid"])
+        resp = make_response(
+            jsonify({"status": "success"} if ok else
+                    {"status": "error", "message": "authentication required"}),
+            200 if ok else 401)
+        return _set_cookie(resp, "", 0)
 
     @app.route("/api/auth/policy", methods=["POST"])
     def policy():

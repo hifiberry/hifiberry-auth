@@ -1,10 +1,12 @@
 """Persistent auth state: the device password (argon2id), the session signing
-key, and the protection policy — a small SQLite key/value store."""
+key, the protection policy, and a session allowlist — a small SQLite key/value
+store and relational tables."""
 
 import os
 import secrets
 import sqlite3
 import threading
+import time
 
 from argon2 import PasswordHasher
 from argon2.exceptions import Argon2Error
@@ -28,6 +30,10 @@ class AuthStore:
     def _init_db(self):
         with self._lock, self._conn() as c:
             c.execute("CREATE TABLE IF NOT EXISTS auth_kv (key TEXT PRIMARY KEY, value TEXT)")
+            c.execute("CREATE TABLE IF NOT EXISTS sessions ("
+                      "sid TEXT PRIMARY KEY, "
+                      "exp INTEGER NOT NULL, "
+                      "created INTEGER NOT NULL)")
 
     def _get(self, key, default=None):
         with self._conn() as c:
@@ -77,3 +83,32 @@ class AuthStore:
         if value not in PROTECTION_VALUES:
             raise ValueError(f"protection must be one of {PROTECTION_VALUES}")
         self._set("protection", value)
+
+    # -- sessions --------------------------------------------------------
+    # An allowlist: a token is only accepted while its row is here, so
+    # deleting the row revokes that one session and nothing else.
+
+    def add_session(self, sid: str, exp: int) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO sessions (sid, exp, created) "
+                      "VALUES (?, ?, ?)", (sid, int(exp), int(time.time())))
+
+    def session_is_active(self, sid: str) -> bool:
+        if not sid:
+            return False
+        with self._conn() as c:
+            row = c.execute("SELECT 1 FROM sessions WHERE sid=?", (sid,)).fetchone()
+        return row is not None
+
+    def remove_session(self, sid: str) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("DELETE FROM sessions WHERE sid=?", (sid,))
+
+    def remove_all_sessions(self) -> None:
+        with self._lock, self._conn() as c:
+            c.execute("DELETE FROM sessions")
+
+    def prune_sessions(self, now: int) -> int:
+        """Drop rows whose expiry has passed. Returns the number removed."""
+        with self._lock, self._conn() as c:
+            return c.execute("DELETE FROM sessions WHERE exp <= ?", (int(now),)).rowcount

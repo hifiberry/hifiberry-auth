@@ -59,3 +59,49 @@ def test_protection_rejects_bad_values(tmp_path):
     s = _store(tmp_path)
     with pytest.raises(ValueError):
         s.set_protection("banana")
+
+
+def test_sessions_start_empty_and_round_trip(tmp_path):
+    s = _store(tmp_path)
+    assert s.session_is_active("nope") is False
+    s.add_session("sid-a", exp=2_000_000_000)
+    assert s.session_is_active("sid-a") is True
+
+
+def test_remove_session_only_removes_that_one(tmp_path):
+    s = _store(tmp_path)
+    s.add_session("sid-a", exp=2_000_000_000)
+    s.add_session("sid-b", exp=2_000_000_000)
+    s.remove_session("sid-a")
+    assert s.session_is_active("sid-a") is False
+    assert s.session_is_active("sid-b") is True
+
+
+def test_remove_all_sessions(tmp_path):
+    s = _store(tmp_path)
+    s.add_session("sid-a", exp=2_000_000_000)
+    s.add_session("sid-b", exp=2_000_000_000)
+    s.remove_all_sessions()
+    assert s.session_is_active("sid-a") is False
+    assert s.session_is_active("sid-b") is False
+
+
+def test_prune_removes_only_expired_rows(tmp_path):
+    s = _store(tmp_path)
+    s.add_session("stale", exp=1_000)
+    s.add_session("fresh", exp=2_000_000_000)
+    assert s.prune_sessions(now=1_500) == 1
+    assert s.session_is_active("stale") is False
+    assert s.session_is_active("fresh") is True
+
+
+def test_sessions_persist_across_instances(tmp_path):
+    s = _store(tmp_path)
+    s.add_session("sid-a", exp=2_000_000_000)
+    assert _store(tmp_path).session_is_active("sid-a") is True
+
+
+def test_empty_sid_is_never_active(tmp_path):
+    s = _store(tmp_path)
+    assert s.session_is_active("") is False
+    assert s.session_is_active(None) is False

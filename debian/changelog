@@ -1,3 +1,19 @@
+hifiberry-auth (0.2.0) stable; urgency=medium
+
+  * Sign-out now ends the session. POST /api/auth/logout previously cleared
+    the caller's cookie and nothing else; because sessions were stateless the
+    token stayed valid until its own expiry, up to thirty days. A kept copy of
+    the cookie still authenticated after a proper sign-out.
+  * Session ids are recorded in an allowlist table; a cookie is accepted only
+    while its row exists. Logout deletes one row.
+  * Changing the device password ends every other session.
+  * Logout requires a valid session and a matching CSRF token, like every
+    other write.
+  * Sessions established before this version stop being accepted, so every
+    device signs in once after the upgrade.
+
+ -- HiFiBerry <support@hifiberry.com>  Tue, 01 Sep 2026 16:38:26 +0000
+
 hifiberry-auth (0.1.3) stable; urgency=medium
 
   * Restart on manifest changes via a dpkg trigger on /etc/hifiberry/auth.d.
