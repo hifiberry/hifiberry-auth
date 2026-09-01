@@ -263,3 +263,15 @@ def test_changing_the_password_leaves_the_caller_signed_in(tmp_path):
             new_cookie = h.split(";", 1)[0].split("=", 1)[1]
     assert new_cookie
     assert _verify(client, "GET", "/api/config/v1/some-read", cookie=new_cookie).status_code == 200
+
+
+def test_login_prunes_expired_session_rows(tmp_path):
+    client, store = _client(tmp_path, protection="risky", with_password=True)
+    store.add_session("stale-sid", exp=1_000)          # long past
+    store.add_session("fresh-sid", exp=2_000_000_000)  # far future
+    assert store.session_is_active("stale-sid") is True
+
+    _login(client)
+
+    assert store.session_is_active("stale-sid") is False
+    assert store.session_is_active("fresh-sid") is True

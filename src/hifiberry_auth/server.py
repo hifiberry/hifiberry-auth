@@ -136,6 +136,7 @@ def create_app(store, tier_map, clock=time.time):
             limiter.record_fail()
             return jsonify({"status": "error", "message": "invalid password"}), 401
         limiter.record_success()
+        store.prune_sessions(int(clock()))
         return _authed_response(remember=bool(body.get("remember")))
 
     @app.route("/api/auth/logout", methods=["POST"])
