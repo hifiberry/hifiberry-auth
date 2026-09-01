@@ -1,6 +1,6 @@
 """Stateless signed session cookies.
 
-A session is a compact JSON payload (version, issued-at, expiry, csrf token)
+A session is a compact JSON payload (version, issued-at, expiry, csrf token, session id)
 signed with HMAC-SHA256 over a per-device server key. No server-side store:
 verification is signature + expiry only, and rotating the key revokes everything.
 """
@@ -41,13 +41,16 @@ class Session:
         return _b64e(hmac.new(self._key, body.encode(), hashlib.sha256).digest())
 
     def mint(self, remember: bool = False):
-        """Return (cookie_value, csrf_token)."""
+        """Return (cookie_value, session) where session is {sid, csrf, exp} —
+        the same shape verify() returns. The caller records sid in the store."""
         now = int(self._clock())
         ttl = self.remember_ttl if remember else self.ttl
         csrf = secrets.token_urlsafe(32)
-        payload = {"v": 1, "iat": now, "exp": now + ttl, "csrf": csrf}
+        sid = secrets.token_urlsafe(16)
+        exp = now + ttl
+        payload = {"v": 1, "iat": now, "exp": exp, "csrf": csrf, "sid": sid}
         body = _b64e(json.dumps(payload, separators=(",", ":")).encode())
-        return f"{body}.{self._mac(body)}", csrf
+        return f"{body}.{self._mac(body)}", {"sid": sid, "csrf": csrf, "exp": exp}
 
     def verify(self, cookie_value: Optional[str]) -> Optional[dict]:
         """Return the payload dict if the cookie is authentic and unexpired, else None."""
@@ -58,10 +61,12 @@ class Session:
             if not hmac.compare_digest(self._mac(body), sig):
                 return None
             payload = json.loads(_b64d(body))
-            if not isinstance(payload, dict) or "exp" not in payload or "csrf" not in payload:
+            if not isinstance(payload, dict) or "exp" not in payload \
+                    or "csrf" not in payload or "sid" not in payload:
                 return None
             if int(self._clock()) >= int(payload["exp"]):
                 return None
-            return {"csrf": payload["csrf"], "exp": int(payload["exp"])}
+            return {"sid": payload["sid"], "csrf": payload["csrf"],
+                    "exp": int(payload["exp"])}
         except Exception:
             return None

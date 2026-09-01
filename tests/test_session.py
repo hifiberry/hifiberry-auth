@@ -16,10 +16,11 @@ def _session(now=1000.0, **kw):
 
 def test_mint_then_verify_round_trips():
     s, _ = _session()
-    cookie, csrf = s.mint()
+    cookie, minted = s.mint()
     data = s.verify(cookie)
     assert data is not None
-    assert data["csrf"] == csrf
+    assert data["csrf"] == minted["csrf"]
+    assert data["sid"] == minted["sid"]
 
 
 def test_tampered_cookie_fails():
@@ -62,8 +63,34 @@ def test_garbage_input_is_rejected():
 
 def test_csrf_token_is_bound_in_the_cookie():
     s, _ = _session()
-    cookie, csrf = s.mint()
-    assert s.verify(cookie)["csrf"] == csrf
+    cookie, minted = s.mint()
+    assert s.verify(cookie)["csrf"] == minted["csrf"]
     # two mints get distinct csrf tokens
-    _, csrf2 = s.mint()
-    assert csrf2 != csrf
+    _, minted2 = s.mint()
+    assert minted2["csrf"] != minted["csrf"]
+
+
+def test_each_mint_gets_a_distinct_sid():
+    s, _ = _session()
+    _, a = s.mint()
+    _, b = s.mint()
+    assert a["sid"] and b["sid"]
+    assert a["sid"] != b["sid"]
+
+
+def test_verify_returns_the_expiry_it_signed():
+    s, _ = _session(now=1000.0, ttl_seconds=100)
+    cookie, minted = s.mint()
+    assert s.verify(cookie)["exp"] == minted["exp"] == 1100
+
+
+def test_verify_rejects_a_correctly_signed_token_without_sid():
+    """Cookies minted before this change carry no sid. They must stop
+    verifying rather than become permanently unrevokable."""
+    import base64, json
+    s, _ = _session(now=1000.0)
+    payload = {"v": 1, "iat": 1000, "exp": 1100, "csrf": "some-csrf-token"}
+    body = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()).rstrip(b"=").decode()
+    old_style = f"{body}.{s._mac(body)}"
+    assert s.verify(old_style) is None
