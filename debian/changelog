@@ -13,6 +13,15 @@ hifiberry-auth (0.2.0) stable; urgency=medium
     device signs in once after the upgrade.
 
  -- HiFiBerry <support@hifiberry.com>  Tue, 01 Sep 2026 16:38:26 +0000
+hifiberry-auth (0.1.3) stable; urgency=medium
+
+  * Restart on manifest changes via a dpkg trigger on /etc/hifiberry/auth.d.
+    Manifests were only read at startup and nothing restarted the service when
+    a package shipped one, so on a fresh install hifiberry-auth came up as a
+    dependency before configurator and audiocontrol dropped theirs, classified
+    every endpoint as risky and 401'd the entire web UI.
+
+ -- HiFiBerry <support@hifiberry.com>  Sat, 01 Aug 2026 09:00:00 +0000
 
 hifiberry-auth (0.1.2) stable; urgency=medium
 

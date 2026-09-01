@@ -1,0 +1,5 @@
+# hifiberry-auth reads /etc/hifiberry/auth.d/*.json only at startup, so it has
+# to be restarted whenever a package drops, changes or removes a manifest.
+# noawait: the activating package need not wait for us, and dpkg coalesces all
+# activations in a run into a single restart at the end.
+interest-noawait /etc/hifiberry/auth.d
