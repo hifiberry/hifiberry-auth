@@ -122,6 +122,7 @@ def create_app(store, tier_map, clock=time.time):
             if not store.verify_password(body.get("current", "")):
                 return jsonify({"status": "error", "message": "current password required"}), 401
         store.set_password(new)
+        store.remove_all_sessions()
         if store.get_protection() in ("unset", "off"):
             store.set_protection("risky")
         return _authed_response(remember=bool(body.get("remember")))

@@ -236,3 +236,30 @@ def test_logout_leaves_other_sessions_alone(tmp_path):
 
     assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie_a).status_code == 401
     assert _verify(client, "GET", "/api/config/v1/some-read", cookie=cookie_b).status_code == 200
+
+
+def test_changing_the_password_ends_other_sessions(tmp_path):
+    """The panic button: someone who changes the device password expects
+    every other signed-in device to be shut out."""
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _, old_cookie, _ = _login(client)
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=old_cookie).status_code == 200
+
+    r = client.post("/api/auth/set-password",
+                    json={"password": "newpass", "current": "secret"})
+    assert r.status_code == 200
+
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=old_cookie).status_code == 401
+
+
+def test_changing_the_password_leaves_the_caller_signed_in(tmp_path):
+    client, _ = _client(tmp_path, protection="risky", with_password=True)
+    _login(client)
+    r = client.post("/api/auth/set-password",
+                    json={"password": "newpass", "current": "secret"})
+    new_cookie = None
+    for h in r.headers.getlist("Set-Cookie"):
+        if h.startswith(COOKIE + "="):
+            new_cookie = h.split(";", 1)[0].split("=", 1)[1]
+    assert new_cookie
+    assert _verify(client, "GET", "/api/config/v1/some-read", cookie=new_cookie).status_code == 200
