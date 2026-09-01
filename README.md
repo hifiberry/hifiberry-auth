@@ -53,12 +53,19 @@ restarts this service automatically.
 ## Sessions
 
 The password is hashed with **argon2id** and stored in SQLite at
-`/var/lib/hifiberry-auth/auth.db`. The session is a stateless
+`/var/lib/hifiberry-auth/auth.db`. The session is an
 **HMAC-SHA256-signed cookie** (`hifiberry_session`, `HttpOnly`, `SameSite=Lax`)
-carrying its own issue/expiry timestamps and a CSRF token — there is no
-server-side session table. Rotating the signing key (or deleting the database)
-revokes every session. Sessions last 12 hours, or 30 days when the user opts
-into staying signed in.
+carrying its own issue/expiry timestamps, a CSRF token and a random session id.
+That session id is also recorded in an **allowlist table** in the same
+database: a cookie is accepted only while its row is there. Signing out deletes
+that one row; changing the device password deletes every row and then mints a
+new session for whoever changed it, so every other device is signed out.
+Rotating the signing key (or deleting the database) still revokes every
+session. Sessions last 12 hours, or 30 days when the user opts into staying
+signed in.
+
+Sessions issued before 0.2.0 carry no session id and are not accepted, so every
+device signs in once after that upgrade.
 
 Risky **non-GET** requests must additionally carry the session's CSRF token in
 `X-CSRF-Token`.
@@ -76,7 +83,7 @@ against an attacker who can read or modify LAN traffic.
 | `/api/auth/status` | GET | `{protection, has_password, authenticated}` |
 | `/api/auth/set-password` | POST | set/change the password, mints a session |
 | `/api/auth/login` | POST | sign in (rate limited), mints a session |
-| `/api/auth/logout` | POST | clear the session cookie |
+| `/api/auth/logout` | POST | end the session (needs a session and a CSRF token) and clear the cookie |
 | `/api/auth/policy` | POST | set the protection policy |
 | `/api/auth/csrf` | GET | current session's CSRF token |
 
