@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # There is no requirements.txt / pyproject dependency list to install
+      # from: the Debian control file lists python3-flask, python3-waitress
+      # and python3-argon2 (the Debian name for the argon2-cffi project), but
+      # those are apt names, not pip ones. This installs the PyPI packages the
+      # test suite actually imports:
+      #   - pytest      test runner
+      #   - flask       src/hifiberry_auth/server.py and tests/test_server.py;
+      #                 server.py imports it in a try/except and test_server.py
+      #                 does `pytest.importorskip("flask")`, so it would skip
+      #                 rather than fail if this were ever dropped
+      #   - argon2-cffi provides the `argon2` module used by
+      #                 src/hifiberry_auth/store.py (PasswordHasher,
+      #                 Argon2Error) for hashing the device password; this is
+      #                 a hard import with no fallback, unlike flask
+      # waitress (used only by __main__.py to serve the app) is not imported
+      # by anything under tests/, so it is left out here.
+      - name: Install dependencies
+        run: pip install pytest flask argon2-cffi
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
